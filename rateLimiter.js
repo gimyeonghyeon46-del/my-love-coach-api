@@ -1,6 +1,6 @@
 // 간단한 IP 기반 사용량 제한
 const ipLimits = new Map();
-const LIMIT_PER_DAY = 10; // 하루 10회 제한
+const LIMIT_PER_DAY = 7; // 하루 7회 제한 (수익성 최적화)
 const RESET_INTERVAL = 24 * 60 * 60 * 1000; // 24시간
 
 // 매일 자정에 초기화
