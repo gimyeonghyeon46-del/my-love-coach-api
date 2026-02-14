@@ -365,7 +365,11 @@ app.post('/api/analyze', async (req, res) => {
     }
     userHistory.set(userId, history);
     
-    res.json(analysis);
+    // remaining 필드 추가
+    res.json({
+      ...analysis,
+      remaining: rateLimit.remaining
+    });
 
   } catch (error) {
     console.error('분석 오류:', error.response?.data || error.message);
