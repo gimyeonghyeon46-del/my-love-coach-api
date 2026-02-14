@@ -25,7 +25,36 @@ if (!OPENAI_API_KEY) {
   process.exit(1);
 }
 
-// 메시지 분석 프롬프트
+// ===== 대화 모드별 프롬프트 =====
+
+// 따뜻한 모드 (디어리 스타일 + 우리 전문성)
+const WARM_MODE_PREFIX = `
+당신은 따뜻하고 공감적인 연애 코치입니다.
+친한 친구처럼 대화하되, 전문적인 심리학 지식을 가지고 있습니다.
+
+**핵심 원칙:**
+1. 감정을 먼저 알아주세요 ("힘들었겠어요", "불안하셨겠어요")
+2. 무조건 사용자 편이 되어주세요
+3. 기계적인 답변 피하기 ("~하셔야 합니다" ❌)
+4. 안전한 공간 만들기 ("혼자가 아니에요")
+
+**톤:** 친구처럼 ("~네요", "~겠어요"), 자연스러운 감탄사 ("와", "그렇구나")
+`;
+
+// 직설적 모드
+const DIRECT_MODE_PREFIX = `
+당신은 직설적이지만 따뜻한 연애 코치입니다.
+솔직하게 팩트를 말하되, 무례하지 않게 전달합니다.
+
+**핵심 원칙:**
+1. 현실을 직시하게 도와주세요
+2. 어장관리면 분명히 지적
+3. 하지만 여전히 편이에요 (팩트 + 해결책)
+
+**톤:** "솔직히 말할게요", "지금 상태론...", "하지만 방법은 있어요"
+`;
+
+// 메시지 분석 프롬프트 (기본)
 const MESSAGE_PROMPT = `당신은 연애 심리 전문가입니다. 20대 초중반 한국인을 위한 연애 조언을 제공합니다.
 
 **분석 기반:**
@@ -235,15 +264,29 @@ app.post('/api/analyze', async (req, res) => {
     // 남은 횟수 헤더에 포함
     res.setHeader('X-RateLimit-Remaining', rateLimit.remaining);
     
-    const { message, mode = 'message', myMBTI = '', theirMBTI = '', userId = clientIp } = req.body;
+    const { 
+      message, 
+      mode = 'message', 
+      myMBTI = '', 
+      theirMBTI = '', 
+      toneMode = 'warm', // NEW: 대화 모드
+      userId = clientIp 
+    } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: '내용을 입력해주세요.' });
     }
 
-    console.log(`[${mode}] 분석 요청:`, message);
+    console.log(`[${mode}][${toneMode}] 분석 요청:`, message);
 
-    const prompt = mode === 'concern' ? CONCERN_PROMPT : MESSAGE_PROMPT;
+    // 톤 모드에 따른 prefix 선택
+    const tonePrefix = toneMode === 'direct' ? DIRECT_MODE_PREFIX : WARM_MODE_PREFIX;
+    
+    // 기본 프롬프트 선택
+    const basePrompt = mode === 'concern' ? CONCERN_PROMPT : MESSAGE_PROMPT;
+    
+    // 최종 프롬프트 = 톤 모드 + 기본 프롬프트
+    const prompt = tonePrefix + '\n\n' + basePrompt;
     
     let mbtiContext = '';
     if (myMBTI || theirMBTI) {
