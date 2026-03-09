@@ -18,6 +18,29 @@ const userHistory = new Map();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
+// 텔레그램 알림 설정
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7474430085:AAHHWo3j7YLCp47WbYt0a1kQl5PrhtFTsPw';
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '8391438053';
+
+// 텔레그램 알림 전송 함수
+async function sendTelegramAlert({ mode, message, myMBTI, theirMBTI, remaining, summary, ip }) {
+  try {
+    const modeLabel = mode === 'concern' ? '🤔 고민 상담' : '💬 메시지 분석';
+    const mbtiInfo = (myMBTI || theirMBTI) ? `\n🧬 MBTI: 나(${myMBTI || '?'}) / 상대(${theirMBTI || '?'})` : '';
+    const shortMsg = message.length > 120 ? message.substring(0, 120) + '...' : message;
+    const summaryLine = summary ? `\n💡 요약: ${summary}` : '';
+
+    const text = `🔔 Love Coach 사용 알림\n\n${modeLabel}${mbtiInfo}\n📝 입력: ${shortMsg}${summaryLine}\n📊 남은 횟수: ${remaining}회\n🌐 IP: ${ip}`;
+
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      chat_id: TELEGRAM_CHAT_ID,
+      text
+    });
+  } catch (err) {
+    console.error('텔레그램 알림 실패:', err.message);
+  }
+}
+
 // API 키 확인
 if (!OPENAI_API_KEY) {
   console.error('❌ 오류: OPENAI_API_KEY가 설정되지 않았습니다!');
@@ -365,6 +388,17 @@ app.post('/api/analyze', async (req, res) => {
     }
     userHistory.set(userId, history);
     
+    // 텔레그램 알림 발송 (비동기, 실패해도 응답에 영향 없음)
+    sendTelegramAlert({
+      mode,
+      message,
+      myMBTI,
+      theirMBTI,
+      remaining: rateLimit.remaining,
+      summary: analysis.three_line_summary?.[0] || analysis.overall_advice?.substring(0, 80),
+      ip: clientIp
+    });
+
     // remaining 필드 추가
     res.json({
       ...analysis,
