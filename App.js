@@ -7,7 +7,8 @@ import {
   TextInput, 
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator 
+  ActivityIndicator,
+  Modal
 } from 'react-native';
 import { analyzeMessage } from './aiService';
 
@@ -19,6 +20,10 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [remainingUses, setRemainingUses] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackRating, setFeedbackRating] = useState(0);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
 
   const mbtiOptions = [
     '', 'INTJ', 'INTP', 'ENTJ', 'ENTP',
@@ -26,6 +31,26 @@ export default function App() {
     'ISTJ', 'ISFJ', 'ESTJ', 'ESFJ',
     'ISTP', 'ISFP', 'ESTP', 'ESFP'
   ];
+
+  const API_BASE = 'https://my-love-coach-api.onrender.com';
+
+  const handleFeedbackSubmit = async () => {
+    if (feedbackRating === 0) {
+      alert('별점을 선택해주세요!');
+      return;
+    }
+    try {
+      await fetch(`${API_BASE}/api/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: feedbackRating, text: feedbackText })
+      });
+      setFeedbackSubmitted(true);
+      setTimeout(() => setShowFeedback(false), 2000);
+    } catch (e) {
+      alert('피드백 전송 중 오류가 발생했습니다.');
+    }
+  };
 
   const handleAnalyze = async () => {
     if (!message.trim()) {
@@ -43,6 +68,10 @@ export default function App() {
       const result = await analyzeMessage(message, mode, myMBTI, theirMBTI);
       setAnalysis(result.data);
       setRemainingUses(result.remaining);
+      // 횟수 소진 시 피드백 모달 표시
+      if (result.remaining === 0) {
+        setTimeout(() => setShowFeedback(true), 1500);
+      }
     } catch (error) {
       // 사용자에게 정확한 에러 메시지 표시
       if (error.message) {
@@ -59,6 +88,52 @@ export default function App() {
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
+
+      {/* 피드백 모달 */}
+      <Modal
+        visible={showFeedback}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowFeedback(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            {feedbackSubmitted ? (
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 40 }}>🎉</Text>
+                <Text style={styles.modalTitle}>감사합니다!</Text>
+                <Text style={styles.modalSubtitle}>소중한 의견이 전달됐어요 💌</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>오늘 횟수를 다 쓰셨어요!</Text>
+                <Text style={styles.modalSubtitle}>서비스가 도움이 됐나요? 한 줄 피드백 부탁드려요 🙏</Text>
+                <View style={styles.starRow}>
+                  {[1,2,3,4,5].map(star => (
+                    <TouchableOpacity key={star} onPress={() => setFeedbackRating(star)}>
+                      <Text style={{ fontSize: 36, opacity: feedbackRating >= star ? 1 : 0.3 }}>⭐</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TextInput
+                  style={styles.feedbackInput}
+                  placeholder="어떤 점이 좋았나요? 아쉬운 점은요? (선택)"
+                  value={feedbackText}
+                  onChangeText={setFeedbackText}
+                  multiline
+                  numberOfLines={3}
+                />
+                <TouchableOpacity style={styles.feedbackBtn} onPress={handleFeedbackSubmit}>
+                  <Text style={styles.feedbackBtnText}>피드백 보내기 💌</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowFeedback(false)}>
+                  <Text style={styles.modalSkip}>나중에 할게요</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
       
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>💬 연애 AI 코치</Text>
@@ -1154,5 +1229,77 @@ const styles = StyleSheet.create({
     color: '#1976D2',
     fontWeight: '600',
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalBox: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  starRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  feedbackInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    color: '#333',
+    backgroundColor: '#f9f9f9',
+    textAlignVertical: 'top',
+    marginBottom: 16,
+    minHeight: 80,
+  },
+  feedbackBtn: {
+    backgroundColor: '#FF6B6B',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  feedbackBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalSkip: {
+    fontSize: 13,
+    color: '#999',
+    textDecorationLine: 'underline',
   },
 });

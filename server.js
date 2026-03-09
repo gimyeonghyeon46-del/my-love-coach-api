@@ -22,20 +22,58 @@ const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7474430085:AAHHWo3j7YLCp47WbYt0a1kQl5PrhtFTsPw';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '8391438053';
 
-// 텔레그램 알림 전송 함수
-async function sendTelegramAlert({ mode, message, myMBTI, theirMBTI, remaining, summary, ip }) {
+// 텔레그램 메시지 전송 (긴 메시지 자동 분할)
+async function sendTelegram(text) {
+  const MAX = 4000;
+  const chunks = [];
+  for (let i = 0; i < text.length; i += MAX) {
+    chunks.push(text.substring(i, i + MAX));
+  }
+  for (const chunk of chunks) {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      chat_id: TELEGRAM_CHAT_ID,
+      text: chunk
+    });
+  }
+}
+
+// 텔레그램 알림 전송 함수 (사용자 분석 요청)
+async function sendTelegramAlert({ mode, message, myMBTI, theirMBTI, remaining, analysis, ip }) {
   try {
     const modeLabel = mode === 'concern' ? '🤔 고민 상담' : '💬 메시지 분석';
     const mbtiInfo = (myMBTI || theirMBTI) ? `\n🧬 MBTI: 나(${myMBTI || '?'}) / 상대(${theirMBTI || '?'})` : '';
-    const shortMsg = message.length > 120 ? message.substring(0, 120) + '...' : message;
-    const summaryLine = summary ? `\n💡 요약: ${summary}` : '';
 
-    const text = `🔔 Love Coach 사용 알림\n\n${modeLabel}${mbtiInfo}\n📝 입력: ${shortMsg}${summaryLine}\n📊 남은 횟수: ${remaining}회\n🌐 IP: ${ip}`;
+    // 메시지 1: 기본 정보
+    const msg1 = `🔔 Love Coach 사용 알림\n\n${modeLabel}${mbtiInfo}\n📝 입력 내용:\n${message}\n\n📊 남은 횟수: ${remaining}회\n🌐 IP: ${ip}`;
+    await sendTelegram(msg1);
 
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      chat_id: TELEGRAM_CHAT_ID,
-      text
-    });
+    // 메시지 2: AI 분석 결과 전체
+    let msg2 = `📊 AI 분석 결과\n\n`;
+
+    if (analysis.three_line_summary?.length) {
+      msg2 += `💡 3줄 요약:\n${analysis.three_line_summary.join('\n')}\n\n`;
+    }
+    if (analysis.overall_advice) {
+      msg2 += `📋 전체 조언:\n${analysis.overall_advice}\n\n`;
+    }
+    if (analysis.reply_suggestions?.length) {
+      msg2 += `💬 답장 제안:\n`;
+      analysis.reply_suggestions.forEach((s, i) => {
+        msg2 += `\n[${i+1}] ${s.option}\n`;
+        if (s.exact_examples?.length) {
+          msg2 += s.exact_examples.map(e => `  • ${e}`).join('\n') + '\n';
+        }
+      });
+      msg2 += '\n';
+    }
+    if (analysis.warnings?.length) {
+      msg2 += `⚠️ 주의사항:\n${analysis.warnings.map(w => `• ${w}`).join('\n')}\n\n`;
+    }
+    if (analysis.interest_level !== undefined) {
+      msg2 += `❤️ 관심도: ${analysis.interest_level}%\n`;
+    }
+
+    await sendTelegram(msg2);
   } catch (err) {
     console.error('텔레그램 알림 실패:', err.message);
   }
@@ -395,7 +433,7 @@ app.post('/api/analyze', async (req, res) => {
       myMBTI,
       theirMBTI,
       remaining: rateLimit.remaining,
-      summary: analysis.three_line_summary?.[0] || analysis.overall_advice?.substring(0, 80),
+      analysis,
       ip: clientIp
     });
 
@@ -440,6 +478,29 @@ app.post('/api/analyze', async (req, res) => {
         message: '분석 중 오류가 발생했습니다.'
       }
     });
+  }
+});
+
+// 피드백 API 엔드포인트
+app.post('/api/feedback', async (req, res) => {
+  try {
+    const { rating, text, ip: userIp } = req.body;
+    const clientIp = req.ip || req.connection.remoteAddress;
+
+    if (!rating) {
+      return res.status(400).json({ error: '별점을 입력해주세요.' });
+    }
+
+    const stars = '⭐'.repeat(Math.min(Math.max(parseInt(rating), 1), 5));
+    const feedbackText = text ? `\n💬 의견: ${text}` : '\n💬 의견: (없음)';
+    const msg = `📝 Love Coach 피드백 도착!\n\n${stars} (${rating}/5)${feedbackText}\n🌐 IP: ${userIp || clientIp}`;
+
+    await sendTelegram(msg);
+
+    res.json({ success: true, message: '피드백 감사합니다!' });
+  } catch (err) {
+    console.error('피드백 오류:', err.message);
+    res.status(500).json({ error: '피드백 전송 중 오류가 발생했습니다.' });
   }
 });
 
