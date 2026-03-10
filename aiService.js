@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // 백엔드 서버 주소
-const BACKEND_URL = 'http://localhost:3001';
+const BACKEND_URL = 'https://my-love-coach-api.onrender.com';
 
 export const analyzeMessage = async (message, mode = 'message', myMBTI = '', theirMBTI = '') => {
   try {
